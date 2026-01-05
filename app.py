@@ -1,80 +1,97 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
+import json
 
-# --- 1. API VE GÜVENLİK ---
-# API Key'i Streamlit Secrets üzerinden alıyoruz
+# --- 1. AYARLAR VE GÜVENLİK ---
 try:
     API_KEY = st.secrets["API_KEY"]
     genai.configure(api_key=API_KEY)
 except:
-    st.error("API Key bulunamadı! Lütfen Secrets ayarlarına 'API_KEY' ekleyin.")
+    st.error("Lütfen Streamlit Secrets'a 'API_KEY' ekleyin.")
 
-# --- 2. MODEL AYARI ---
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- 3. HAFIZA (SESSION STATE) KURULUMU ---
-# Uygulama ilk açıldığında hafızayı boşaltıyoruz
-if "chat" not in st.session_state:
-    st.session_state.chat = model.start_chat(history=[])
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# --- 2. DURUM YÖNETİMİ (SESSION STATE) ---
+if "step_count" not in st.session_state:
+    st.session_state.step_count = 1
+if "current_question" not in st.session_state:
+    st.session_state.current_question = None
+if "quiz_finished" not in st.session_state:
+    st.session_state.quiz_finished = False
 
-# --- 4. STEPLY ARAYÜZÜ ---
-st.set_page_config(page_title="Steply | İnteraktif Öğretmen", page_icon="🪜")
+# --- 3. YARDIMCI FONKSİYON: SORU OLUŞTURUCU ---
+def soru_getir(ipucu=None):
+    prompt = (
+        "Senin adın Steply. İnteraktif bir öğretmensin. "
+        "Görevin öğrenciye bir problemde adım adım rehberlik etmek. "
+        "Şu anki adım için bir çoktan seçmeli soru hazırla. "
+        "CEVABINI MUTLAKA ŞU JSON FORMATINDA VER (Sadece JSON olsun, başka metin ekleme):\n"
+        "{\n"
+        "  'soru': 'Sıradaki adım için soru metni',\n"
+        "  'A': 'Şık A',\n"
+        "  'B': 'Şık B',\n"
+        "  'C': 'Şık C',\n"
+        "  'D': 'Şık D',\n"
+        "  'dogru_cevap': 'A veya B veya C veya D',\n"
+        "  'aciklama': 'Doğru cevabın neden doğru olduğuna dair kısa bir not'\n"
+        "}"
+    )
+    # Eğer bir görsel veya metin girildiyse onu da ekle
+    response = model.generate_content(prompt)
+    try:
+        # Gemini bazen ```json ... ``` içinde verir, onu temizliyoruz
+        temiz_json = response.text.replace('```json', '').replace('```', '').strip()
+        return json.loads(temiz_json)
+    except:
+        return None
 
-st.markdown("<h1 style='text-align: center;'>🪜 Steply İnteraktif</h1>", unsafe_allow_html=True)
-st.caption("Öğrenciye cevabı doğrudan söylemez, adım adım buldurur.")
+# --- 4. ARAYÜZ ---
+st.title("🪜 Steply: Tıklamalı Quiz Modu")
+st.info("Doğru adımı seçerek ilerle!")
 
-# Yan Menü: Yeni Ders Başlat
-with st.sidebar:
-    if st.button("Yeni Derse Başla (Hafızayı Sil)"):
-        st.session_state.chat = model.start_chat(history=[])
-        st.session_state.messages = []
-        st.rerun()
+yuklenen_gorsel = st.file_uploader("Soru görselini yükle", type=["jpg", "png", "jpeg"])
 
-# Fotoğraf Yükleme
-yuklenen_gorsel = st.file_uploader("Sorunun fotoğrafını çek veya yükle", type=["jpg", "png", "jpeg"])
+if yuklenen_gorsel and st.session_state.current_question is None:
+    with st.spinner("Steply ilk adımı hazırlıyor..."):
+        # İlk soruyu oluştur
+        st.session_state.current_question = soru_getir()
 
-# Sohbet Geçmişini Göster
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
-
-# Kullanıcı Girişi
-if prompt := st.chat_input("Buraya yaz (Örn: Çözmeye başlayalım!)"):
+# --- 5. ETKİLEŞİM ALANI ---
+if st.session_state.current_question:
+    q = st.session_state.current_question
     
-    # 1. Kullanıcı mesajını ekrana bas ve hafızaya ekle
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.write(prompt)
+    st.subheader(f"Adım {st.session_state.step_count}:")
+    st.write(q['soru'])
 
-    # 2. Steply'nin yanıtını oluştur
-    with st.chat_message("assistant"):
-        with st.spinner("Steply düşünüyor..."):
-            
-            # Steply'ye gizli talimat (Prompt Engineering)
-            # Eğer bu ilk mesajsa, görevi hatırla
-            sistem_komutu = (
-                "Senin adın Steply. İnteraktif bir öğretmensin. "
-                "Görevin: Sorunun tamamını çözüp öğrenciye vermek DEĞİLDİR. "
-                "1. Sadece İLK ADIMI açıkla. "
-                "2. Ardından öğrenciye bir soru sorarak onun katılımını bekle. "
-                "3. Öğrenci doğru cevap verirse bir sonraki adıma geç. "
-                "4. Yanlış yaparsa ipucu ver ama cevabı söyleme. "
-                "Asla listenin tamamını tek seferde paylaşma."
-            )
-            
-            # İçerik hazırlığı (Görsel varsa ekle)
-            icerik = [sistem_komutu, prompt]
-            if yuklenen_gorsel and len(st.session_state.messages) == 1:
-                gorsel = Image.open(yuklenen_gorsel)
-                icerik.append(gorsel)
-                st.image(gorsel, caption="İncelenen Soru", width=300)
+    # Şıklar için butonlar
+    col1, col2 = st.columns(2)
+    with col1:
+        btnA = st.button(f"A) {q['A']}", use_container_width=True)
+        btnB = st.button(f"B) {q['B']}", use_container_width=True)
+    with col2:
+        btnC = st.button(f"C) {q['C']}", use_container_width=True)
+        btnD = st.button(f"D) {q['D']}", use_container_width=True)
 
-            # Yanıtı al
-            response = st.session_state.chat.send_message(icerik)
-            st.write(response.text)
-            
-            # Yanıtı hafızaya ekle
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+    # Cevap Kontrolü
+    secilen = None
+    if btnA: secilen = "A"
+    if btnB: secilen = "B"
+    if btnC: secilen = "C"
+    if btnD: secilen = "D"
+
+    if secilen:
+        if secilen == q['dogru_cevap']:
+            st.success(f"Harika! Doğru cevap: {secilen}. \n\n {q['aciklama']}")
+            if st.button("Sonraki Adıma Geç ➡️"):
+                st.session_state.step_count += 1
+                st.session_state.current_question = soru_getir()
+                st.rerun()
+        else:
+            st.error(f"Maalesef yanlış. {secilen} şıkkı doğru değil. Tekrar dene!")
+
+# --- 6. SIFIRLAMA ---
+if st.sidebar.button("Dersi Sıfırla"):
+    st.session_state.step_count = 1
+    st.session_state.current_question = None
+    st.rerun()
