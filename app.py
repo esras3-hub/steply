@@ -4,7 +4,8 @@ from PIL import Image
 
 # --- 1. API AYARLARI ---
 # Kendi API anahtarını buraya yapıştır:
-API_KEY = "AIzaSyDR2gSSYpvZHi1Xu3bakMUdLDvCYDLzWdM"
+# API anahtarını doğrudan yazmak yerine sistem ayarlarından çekiyoruz
+API_KEY = st.secrets["API_KEY"]
 genai.configure(api_key=API_KEY)
 
 # --- 2. MODEL SEÇİMİ ---
