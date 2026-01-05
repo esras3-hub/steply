@@ -43,16 +43,33 @@ def soru_getir(metin_input=None, gorsel_input=None):
     except:
         return None
 
-# --- 4. ARAYÜZ VE LOGO ---
+# --- 4. AKILLI LOGO YÜKLEYİCİ ---
 st.set_page_config(page_title="Steply Quiz", page_icon="🪜")
 
-LOGO_DOSYA_ADI = "logo.png" 
-if os.path.exists(LOGO_DOSYA_ADI):
-    st.image(LOGO_DOSYA_ADI, width=150)
-else:
-    st.markdown("<h1>🪜 Steply</h1>", unsafe_allow_html=True)
+# Klasördeki dosyaları tara ve logo olabilecek birini bul
+def logoyu_bul():
+    uzantilar = [".png", ".jpg", ".jpeg", ".webp"]
+    # Klasördeki her dosyaya bak
+    for dosya in os.listdir("."):
+        if dosya.lower().startswith("logo") and any(dosya.lower().endswith(u) for u in uzantilar):
+            return dosya
+    return None
 
-# --- 5. GİRİŞ ALANLARI ---
+bulunan_logo = logoyu_bul()
+
+if bulunan_logo:
+    st.image(bulunan_logo, width=150)
+else:
+    # Eğer dosya hala bulunamazsa, GitHub'daki resmin doğrudan linkini kullanabilirsin
+    # Örnek: st.image("https://raw.githubusercontent.com/KULLANICI_ADIN/steply/main/logo.png", width=150)
+    st.markdown("<h1>🪜 Steply</h1>", unsafe_allow_html=True)
+    # Debug bilgisi (Logonun neden gelmediğini anlamak için yan menüde dosya listesini gösterir)
+    with st.sidebar:
+        st.write("Mevcut Dosyalar:", os.listdir("."))
+
+# --- 5. GİRİŞ ALANLARI VE UYGULAMA AKIŞI ---
+# (Buradan sonrası önceki kodla aynı, sadece güvenli olması için temizledim)
+st.write("### İnteraktif Çözüm Asistanı")
 soru_metni = st.text_area("Sorunu yaz veya aşağıdan fotoğraf yükle:", height=100)
 yuklenen_gorsel = st.file_uploader("Fotoğraf yükle", type=["jpg", "png", "jpeg"])
 
@@ -64,21 +81,23 @@ if st.session_state.current_question is None:
                 st.session_state.current_question = soru_getir(soru_metni, gorsel_veri)
                 st.rerun()
 
-# --- 6. ETKİLEŞİM ALANI ---
 if st.session_state.current_question:
     q = st.session_state.current_question
     st.subheader(f"Adım {st.session_state.step_count}:")
     st.markdown(f"**{q['soru']}**")
-
     col1, col2 = st.columns(2)
     with col1:
-        btnA = st.button(f"A) {q['A']}", use_container_width=True)
-        btnB = st.button(f"B) {q['B']}", use_container_width=True)
+        btnA = st.button(f"A) {q['A']}", key="btnA")
+        btnB = st.button(f"B) {q['B']}", key="btnB")
     with col2:
-        btnC = st.button(f"C) {q['C']}", use_container_width=True)
-        btnD = st.button(f"D) {q['D']}", use_container_width=True)
-
-    secilen = "A" if btnA else "B" if btnB else "C" if btnC else "D" if btnD else None
+        btnC = st.button(f"C) {q['C']}", key="btnC")
+        btnD = st.button(f"D) {q['D']}", key="btnD")
+    
+    secilen = None
+    if btnA: secilen = "A"
+    elif btnB: secilen = "B"
+    elif btnC: secilen = "C"
+    elif btnD: secilen = "D"
 
     if secilen:
         if secilen == q['dogru_cevap']:
@@ -91,7 +110,6 @@ if st.session_state.current_question:
         else:
             st.error("❌ Yanlış şık, tekrar dene!")
 
-# --- 7. SIFIRLAMA ---
 if st.sidebar.button("Dersi Sıfırla / Yeni Soru"):
     st.session_state.step_count = 1
     st.session_state.current_question = None
