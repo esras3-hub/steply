@@ -2,75 +2,79 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 
-# --- 1. API AYARLARI ---
-# Kendi API anahtarını buraya yapıştır:
-# API anahtarını doğrudan yazmak yerine sistem ayarlarından çekiyoruz
-API_KEY = st.secrets["API_KEY"]
-genai.configure(api_key=API_KEY)
+# --- 1. API VE GÜVENLİK ---
+# API Key'i Streamlit Secrets üzerinden alıyoruz
+try:
+    API_KEY = st.secrets["API_KEY"]
+    genai.configure(api_key=API_KEY)
+except:
+    st.error("API Key bulunamadı! Lütfen Secrets ayarlarına 'API_KEY' ekleyin.")
 
-# --- 2. MODEL SEÇİMİ ---
-def get_steply_model():
-    try:
-        available_models = [
-            m.name for m in genai.list_models() 
-            if 'generateContent' in m.supported_generation_methods
-        ]
-        flash_models = [m for m in available_models if 'flash' in m]
-        return flash_models[0] if flash_models else available_models[0]
-    except:
-        return 'models/gemini-1.5-flash'
+# --- 2. MODEL AYARI ---
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- 3. STEPLY ARAYÜZÜ ---
-st.set_page_config(page_title="Steply | Adım Adım Çözüm", page_icon="🪜", layout="centered")
+# --- 3. HAFIZA (SESSION STATE) KURULUMU ---
+# Uygulama ilk açıldığında hafızayı boşaltıyoruz
+if "chat" not in st.session_state:
+    st.session_state.chat = model.start_chat(history=[])
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# Logo ve Başlık
-st.markdown("<h1 style='text-align: center; color: #4A90E2;'>🪜 Steply</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Soruları fotoğraf çek, yükle ve <b>adım adım</b> çözümün tadını çıkar!</p>", unsafe_allow_html=True)
+# --- 4. STEPLY ARAYÜZÜ ---
+st.set_page_config(page_title="Steply | İnteraktif Öğretmen", page_icon="🪜")
 
-st.info("Sistem Kontrolü: Steply v1.0 aktif ve hazır.")
+st.markdown("<h1 style='text-align: center;'>🪜 Steply İnteraktif</h1>", unsafe_allow_html=True)
+st.caption("Öğrenciye cevabı doğrudan söylemez, adım adım buldurur.")
 
-# Giriş Alanları
-with st.container():
-    st.write("---")
-    yuklenen_gorsel = st.file_uploader("Bir fotoğraf yükle veya sürükle", type=["jpg", "jpeg", "png"])
-    soru_metni = st.text_input("Özel bir sorun var mı?", placeholder="Örn: Bu problemi 5. sınıf seviyesinde anlat.")
+# Yan Menü: Yeni Ders Başlat
+with st.sidebar:
+    if st.button("Yeni Derse Başla (Hafızayı Sil)"):
+        st.session_state.chat = model.start_chat(history=[])
+        st.session_state.messages = []
+        st.rerun()
 
-if yuklenen_gorsel:
-    gorsel = Image.open(yuklenen_gorsel)
-    st.image(gorsel, caption="İşlenecek Görsel", use_column_width=True)
+# Fotoğraf Yükleme
+yuklenen_gorsel = st.file_uploader("Sorunun fotoğrafını çek veya yükle", type=["jpg", "png", "jpeg"])
 
-# Çözme Butonu
-if st.button("Adım Adım Çöz 🚀", use_container_width=True):
-    if not yuklenen_gorsel and not soru_metni:
-        st.warning("Lütfen Steply'nin çözmesi için bir fotoğraf veya metin ekle.")
-    else:
-        with st.spinner('Steply adımları hesaplıyor...'):
-            try:
-                model_adi = get_steply_model()
-                model = genai.GenerativeModel(model_adi)
-                
-                # Steply'nin karakterini belirleyen özel komut (Prompt)
-                steplay_komutu = (
-                    "Senin adın Steply. Bir eğitim asistanısın. "
-                    "Gelen soruyu veya görseli analiz et ve mutlaka şu kurallara uy:\n"
-                    "1. Çözümü mutlaka '1, 2, 3...' şeklinde numaralandırılmış adımlarla ver.\n"
-                    "2. Her adımın başına açıklayıcı bir başlık koy.\n"
-                    "3. En sonda bir 'Özet' veya 'Püf Noktası' bölümü ekle.\n"
-                    "4. Dilin samimi ve teşvik edici olsun."
-                )
-                
-                icerik = [steplay_komutu]
-                if soru_metni: icerik.append(f"Kullanıcı Sorusu: {soru_metni}")
-                if yuklenen_gorsel: icerik.append(gorsel)
+# Sohbet Geçmişini Göster
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
 
-                cevap = model.generate_content(icerik)
-                
-                st.write("---")
-                st.subheader("🪜 Steply'nin Çözüm Adımları")
-                st.markdown(cevap.text)
-                
-            except Exception as e:
-                st.error(f"Steply bir hata ile karşılaştı: {e}")
+# Kullanıcı Girişi
+if prompt := st.chat_input("Buraya yaz (Örn: Çözmeye başlayalım!)"):
+    
+    # 1. Kullanıcı mesajını ekrana bas ve hafızaya ekle
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.write(prompt)
 
-# Alt Bilgi
-st.markdown("<br><hr><center><small>Steply - Senin Akıllı Çözüm Ortağın</small></center>", unsafe_allow_html=True)
+    # 2. Steply'nin yanıtını oluştur
+    with st.chat_message("assistant"):
+        with st.spinner("Steply düşünüyor..."):
+            
+            # Steply'ye gizli talimat (Prompt Engineering)
+            # Eğer bu ilk mesajsa, görevi hatırla
+            sistem_komutu = (
+                "Senin adın Steply. İnteraktif bir öğretmensin. "
+                "Görevin: Sorunun tamamını çözüp öğrenciye vermek DEĞİLDİR. "
+                "1. Sadece İLK ADIMI açıkla. "
+                "2. Ardından öğrenciye bir soru sorarak onun katılımını bekle. "
+                "3. Öğrenci doğru cevap verirse bir sonraki adıma geç. "
+                "4. Yanlış yaparsa ipucu ver ama cevabı söyleme. "
+                "Asla listenin tamamını tek seferde paylaşma."
+            )
+            
+            # İçerik hazırlığı (Görsel varsa ekle)
+            icerik = [sistem_komutu, prompt]
+            if yuklenen_gorsel and len(st.session_state.messages) == 1:
+                gorsel = Image.open(yuklenen_gorsel)
+                icerik.append(gorsel)
+                st.image(gorsel, caption="İncelenen Soru", width=300)
+
+            # Yanıtı al
+            response = st.session_state.chat.send_message(icerik)
+            st.write(response.text)
+            
+            # Yanıtı hafızaya ekle
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
