@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from PIL import Image
 import json
+import os # Dosya kontrolü için gerekli
 
 # --- 1. AYARLAR VE GÜVENLİK ---
 try:
@@ -38,6 +39,7 @@ def soru_getir(ipucu=None):
         "}"
     )
     # Eğer bir görsel veya metin girildiyse onu da ekle
+    # NOT: Gerçek bir senaryoda buraya görseli de göndermemiz gerekir.
     response = model.generate_content(prompt)
     try:
         # Gemini bazen ```json ... ``` içinde verir, onu temizliyoruz
@@ -46,10 +48,26 @@ def soru_getir(ipucu=None):
     except:
         return None
 
-# --- 4. ARAYÜZ ---
-st.title("🪜 Steply: Tıklamalı Quiz Modu")
+# --- 4. ARAYÜZ VE LOGO ---
+# Sayfa başlığı ve ikonunu ayarla (Tarayıcı sekmesinde görünür)
+st.set_page_config(page_title="Steply Quiz", page_icon="🪜")
+
+# LOGO ALANI
+# GitHub'a yüklediğin dosyanın tam adı neyse buraya onu yazmalısın:
+LOGO_DOSYA_ADI = "logo.png" 
+
+if os.path.exists(LOGO_DOSYA_ADI):
+    # Logo dosyası varsa göster
+    # width=200 logunun genişliğidir, isteğine göre değiştirebilirsin.
+    st.image(LOGO_DOSYA_ADI, width=200) 
+else:
+    # Logo dosyası yoksa eski başlığı göster
+    st.markdown("<h1>🪜 Steply</h1>", unsafe_allow_html=True)
+
+st.write("### Tıklamalı Quiz Modu")
 st.info("Doğru adımı seçerek ilerle!")
 
+# --- 5. UYGULAMA AKIŞI ---
 yuklenen_gorsel = st.file_uploader("Soru görselini yükle", type=["jpg", "png", "jpeg"])
 
 if yuklenen_gorsel and st.session_state.current_question is None:
@@ -57,10 +75,11 @@ if yuklenen_gorsel and st.session_state.current_question is None:
         # İlk soruyu oluştur
         st.session_state.current_question = soru_getir()
 
-# --- 5. ETKİLEŞİM ALANI ---
+# --- 6. ETKİLEŞİM ALANI ---
 if st.session_state.current_question:
     q = st.session_state.current_question
     
+    st.write("---")
     st.subheader(f"Adım {st.session_state.step_count}:")
     st.write(q['soru'])
 
@@ -90,7 +109,7 @@ if st.session_state.current_question:
         else:
             st.error(f"Maalesef yanlış. {secilen} şıkkı doğru değil. Tekrar dene!")
 
-# --- 6. SIFIRLAMA ---
+# --- 7. SIFIRLAMA ---
 if st.sidebar.button("Dersi Sıfırla"):
     st.session_state.step_count = 1
     st.session_state.current_question = None
